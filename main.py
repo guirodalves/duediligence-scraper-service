@@ -284,8 +284,8 @@ def run_scraper(cnpj: str) -> dict:
         # ----------------------------------------------------------------
         # Step 4 — Parse result (CORRIGIDO)
         # ----------------------------------------------------------------
-        rows = []
         
+        rows = []
         try:
             tables = page.query_selector_all("table")
         
