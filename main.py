@@ -40,11 +40,11 @@ def collect(data: RequestData):
         # 5. Aguarda resultado
         page.wait_for_timeout(5000)
 
-        # 6. Gera PDF da página
-        file_name = f"CEIS_{cnpj}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+        # 6. Gera PNG da página
+        file_name = f"CEIS_{cnpj}.png"
         file_path = f"/tmp/{file_name}"
 
-        page.pdf(path=file_path, format="A4")
+        page.screenshot(path=file_path, full_page=True)
 
         browser.close()
 
