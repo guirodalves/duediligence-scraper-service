@@ -4,6 +4,9 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import base64
 from datetime import datetime
 import time
+from PIL import Image
+import pytesseract
+import re
 
 app = FastAPI()
 
@@ -43,6 +46,15 @@ def _all_frames(page):
     """Return the main page followed by every child frame."""
     return [page] + list(page.frames)
 
+
+def extrair_texto_imagem(path):
+    try:
+        img = Image.open(path)
+        texto = pytesseract.image_to_string(img)
+        return texto
+    except Exception as e:
+        _log(f"OCR falhou: {e}")
+        return ""
 
 # ---------------------------------------------------------------------------
 # Cross-frame element finders
@@ -280,44 +292,40 @@ def run_scraper(cnpj: str) -> dict:
 
             debug["screenshot_result"] = _screenshot_b64(page)
 
-            content = page.content()
-
-            import re
+            page.screenshot(path=file_path, full_page=True)
 
             # -------------------------
-            # EXTRAÇÃO DE METADADOS
+            # OCR EXTRACTION (DEFINITIVO)
             # -------------------------
             
-            def get_text_safe(page, selector):
-                try:
-                    el = page.query_selector(selector)
-                    if el:
-                        return el.inner_text().strip()
-                except:
-                    pass
-                return ""
+            texto = extrair_texto_imagem(file_path)
             
             razao_social = ""
             data_emissao = ""
             validade = ""
             codigo = ""
             
-            # tenta capturar tudo visível
-            texts = page.locator("text=*").all_inner_texts()
+            # Razão social
+            match_nome = re.search(r"Consultado:\s*(.*)", texto)
+            if match_nome:
+                razao_social = match_nome.group(1).strip()
             
-            for t in texts:
-                if "Consultado:" in t:
-                    razao_social = t.replace("Consultado:", "").strip()
+            # Código de controle
+            match_codigo = re.search(r"Código de controle.*:\s*(\S+)", texto)
+            if match_codigo:
+                codigo = match_codigo.group(1).strip()
             
-                if "Código de controle" in t:
-                    codigo = t.split(":")[-1].strip()
+            # Validade
+            match_validade = re.search(r"validade até o dia (.*?)\.", texto)
+            if match_validade:
+                validade = match_validade.group(1)
             
-                if "emitida às" in t:
-                    data_emissao = t.strip()
+            # Data emissão
+            match_emissao = re.search(r"emitida às (.*?) do dia (.*?),", texto)
+            if match_emissao:
+                data_emissao = f"{match_emissao.group(2)} {match_emissao.group(1)}"
             
-                if "validade até" in t:
-                    validade = t.strip()
-            
+            _log(f"OCR Texto: {texto[:500]}")
             _log(f"Razão social: {razao_social}")
             _log(f"Data emissão: {data_emissao}")
             _log(f"Validade: {validade}")
