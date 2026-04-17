@@ -6,7 +6,6 @@ from datetime import datetime
 import time
 
 app = FastAPI()
-ta
 
 class RequestData(BaseModel):
     cnpj: str
