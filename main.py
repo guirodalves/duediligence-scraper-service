@@ -2,318 +2,173 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import base64
-import os
 from datetime import datetime
+import time
 
 app = FastAPI()
 
 class RequestData(BaseModel):
     cnpj: str
 
+
 @app.get("/")
 def root():
     return {"message": "API OK"}
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 def _log(msg: str):
     print(f"[{datetime.utcnow().isoformat()}] {msg}", flush=True)
 
+
 def _screenshot_b64(page, label: str) -> str:
-    """Take a screenshot and return it as a base64 string for inline debug output."""
     try:
         data = page.screenshot(full_page=True)
-        encoded = base64.b64encode(data).decode()
-        _log(f"Screenshot captured: {label} ({len(data)} bytes)")
-        return encoded
-    except Exception as exc:
-        _log(f"Screenshot failed ({label}): {exc}")
+        return base64.b64encode(data).decode()
+    except Exception:
         return ""
 
-def _dump_page_inputs(page) -> list[dict]:
-    """Return a list of all input elements found on the main frame."""
-    try:
-        inputs = page.evaluate("""() => {
-            return Array.from(document.querySelectorAll('input')).map(el => ({
-                type: el.type,
-                name: el.name,
-                id: el.id,
-                value: el.value,
-                placeholder: el.placeholder,
-                visible: el.offsetParent !== null
-            }));
-        }""")
-        return inputs
-    except Exception as exc:
-        _log(f"Could not dump inputs: {exc}")
-        return []
 
-def _dump_iframes(page) -> list[str]:
-    """Return src/name of every iframe on the page."""
-    try:
-        return page.evaluate("""() =>
-            Array.from(document.querySelectorAll('iframe')).map(f =>
-                f.src || f.name || '(no src)')
-        """)
-    except Exception as exc:
-        _log(f"Could not dump iframes: {exc}")
-        return []
-
-def _find_radio_in_frames(page):
-    """
-    Try to find an 'Ente Privado' radio button across the main frame and all
-    child frames.  Returns (frame, element) or (None, None).
-    """
-    # Candidate selectors, ordered from most to least specific
-    selectors = [
-        "input[type=radio][value*='rivado']",   # value contains "rivado" (Privado)
-        "input[type=radio][value*='privado']",
-        "input[type=radio][value*='Privado']",
-        "input[type=radio]",                    # any radio – fall back to index 0
-    ]
-
-    frames = [page] + list(page.frames)
-    _log(f"Searching across {len(frames)} frame(s)")
-
-    for frame in frames:
-        frame_url = getattr(frame, "url", "main")
-        _log(f"  Checking frame: {frame_url}")
-
-        for sel in selectors:
-            try:
-                elements = frame.query_selector_all(sel)
-                if elements:
-                    _log(f"    Found {len(elements)} element(s) with selector '{sel}'")
-                    return frame, elements[0]
-            except Exception as exc:
-                _log(f"    Selector '{sel}' raised: {exc}")
-
-    return None, None
-
-def _find_text_input_in_frames(page):
-    """Find the CNPJ text input across all frames."""
-    selectors = [
-        "input[placeholder*='CNPJ']",
-        "input[placeholder*='cnpj']",
-        "input[name*='cnpj']",
-        "input[name*='CNPJ']",
-        "input[type='text']",
-    ]
-
+def _find_radio(page):
     frames = [page] + list(page.frames)
     for frame in frames:
-        for sel in selectors:
-            try:
-                el = frame.query_selector(sel)
-                if el:
-                    _log(f"Found text input with selector '{sel}' in frame {getattr(frame, 'url', 'main')}")
-                    return frame, el
-            except Exception:
-                pass
+        try:
+            radios = frame.query_selector_all("input[type=radio]")
+            if radios:
+                return frame, radios[0]
+        except:
+            pass
     return None, None
 
-def _find_submit_button_in_frames(page):
-    """Find the Consultar button across all frames."""
-    selectors = [
-        "button:has-text('Consultar')",
-        "input[type=submit][value*='Consultar']",
-        "button[type=submit]",
-        "input[type=submit]",
-    ]
 
+def _find_input(page):
     frames = [page] + list(page.frames)
     for frame in frames:
-        for sel in selectors:
-            try:
-                el = frame.query_selector(sel)
-                if el:
-                    _log(f"Found submit button with selector '{sel}' in frame {getattr(frame, 'url', 'main')}")
-                    return frame, el
-            except Exception:
-                pass
+        try:
+            el = frame.query_selector("input[type='text']")
+            if el:
+                return frame, el
+        except:
+            pass
     return None, None
 
-@app.post("/collect")
-def collect(data: RequestData):
-    cnpj = data.cnpj
-    debug_info: dict = {}
 
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-infobars",
-                    "--window-size=1920,1080",
-                ],
-            )
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1920, "height": 1080},
-                locale="pt-BR",
-                extra_http_headers={
-                    "Accept": (
-                        "text/html,application/xhtml+xml,application/xml;"
-                        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-                    ),
-                    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Referer": "https://certidoes.cgu.gov.br/",
-                },
-            )
-            page = context.new_page()
-
-            # Hide webdriver flag so CloudFront bot-detection scripts see a
-            # regular browser rather than an automated one.
-            page.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-            )
-
-            # ----------------------------------------------------------------
-            # 1. Navigate and wait for the page to fully load
-            # ----------------------------------------------------------------
-            _log(f"Navigating to certidoes.cgu.gov.br for CNPJ {cnpj}")
-            page.goto("https://certidoes.cgu.gov.br/", timeout=90000)
-
-            _log("Waiting for 'load' state…")
-            page.wait_for_load_state("load", timeout=90000)
-
-            _log("Extra wait for JS rendering (3 s)…")
-            page.wait_for_timeout(3000)
-
-            debug_info["screenshot_after_load"] = _screenshot_b64(page, "after_load")
-            debug_info["page_title"] = page.title()
-            debug_info["page_url"] = page.url
-            debug_info["iframes"] = _dump_iframes(page)
-            debug_info["inputs_main_frame"] = _dump_page_inputs(page)
-
-            _log(f"Page title: {debug_info['page_title']}")
-            _log(f"Iframes found: {debug_info['iframes']}")
-            _log(f"Inputs on main frame: {debug_info['inputs_main_frame']}")
-
-            # ----------------------------------------------------------------
-            # 2. Try to find the radio button (Ente Privado)
-            # ----------------------------------------------------------------
-            _log("Attempting to locate radio button…")
-
-            # Give dynamic content a second chance: wait up to 10 s for any radio
-            try:
-                page.wait_for_selector("input[type=radio]", timeout=10000)
-                _log("Radio button appeared in main frame via wait_for_selector")
-            except PlaywrightTimeoutError:
-                _log("wait_for_selector timed out – will still try cross-frame search")
-
-            radio_frame, radio_el = _find_radio_in_frames(page)
-
-            if radio_el is None:
-                # Capture a final screenshot before giving up
-                debug_info["screenshot_no_radio"] = _screenshot_b64(page, "no_radio_found")
-                debug_info["page_content_snippet"] = page.content()[:3000]
-                context.close()
-                browser.close()
-                return {
-                    "status": "error",
-                    "message": "Radio button not found in any frame after extended wait",
-                    "debug": debug_info,
-                }
-
-            _log("Clicking radio button (Ente Privado) via JavaScript to bypass label overlay…")
-            try:
-                # Use JS to set checked + dispatch change event, bypassing the
-                # custom-control-label overlay that intercepts pointer events.
-                radio_frame.evaluate("""
-                    (el) => {
-                        el.checked = true;
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                        el.dispatchEvent(new Event('input',  { bubbles: true }));
-                    }
-                """, radio_el)
-                _log("Radio button checked via JS evaluate")
-            except Exception as js_exc:
-                _log(f"JS evaluate failed ({js_exc}), falling back to force click")
-                radio_el.click(force=True)
-            page.wait_for_timeout(1000)
-
-            debug_info["screenshot_after_radio"] = _screenshot_b64(page, "after_radio_click")
+def _find_button(page):
+    frames = [page] + list(page.frames)
+    for frame in frames:
+        try:
+            el = frame.query_selector("button")
+            if el:
+                return frame, el
+        except:
+            pass
+    return None, None
 
 
-            # ----------------------------------------------------------------
-            # 3. Fill in the CNPJ
-            # ----------------------------------------------------------------
-            _log("Locating CNPJ text input…")
-            text_frame, text_el = _find_text_input_in_frames(page)
+def run_scraper(cnpj: str):
 
-            if text_el is None:
-                debug_info["screenshot_no_input"] = _screenshot_b64(page, "no_text_input")
-                context.close()
-                browser.close()
-                return {
-                    "status": "error",
-                    "message": "CNPJ text input not found in any frame",
-                    "debug": debug_info,
-                }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"]
+        )
 
-            _log(f"Filling CNPJ: {cnpj}")
-            text_el.fill(cnpj)
-            page.wait_for_timeout(500)
+        context = browser.new_context()
+        page = context.new_page()
 
-            # ----------------------------------------------------------------
-            # 4. Click Consultar
-            # ----------------------------------------------------------------
-            _log("Locating Consultar button…")
-            btn_frame, btn_el = _find_submit_button_in_frames(page)
+        _log(f"Acessando CGU para CNPJ {cnpj}")
 
-            if btn_el is None:
-                debug_info["screenshot_no_button"] = _screenshot_b64(page, "no_button")
-                context.close()
-                browser.close()
-                return {
-                    "status": "error",
-                    "message": "Consultar button not found in any frame",
-                    "debug": debug_info,
-                }
+        page.goto("https://certidoes.cgu.gov.br/", timeout=90000)
+        page.wait_for_load_state("load")
+        page.wait_for_timeout(3000)
 
-            _log("Clicking Consultar…")
-            btn_el.click()
+        # RADIO
+        frame, radio = _find_radio(page)
+        if not radio:
+            raise Exception("Radio não encontrado")
 
-            # ----------------------------------------------------------------
-            # 5. Wait for results and capture screenshot
-            # ----------------------------------------------------------------
-            _log("Waiting for results (5 s)…")
-            page.wait_for_timeout(5000)
+        frame.evaluate("""
+            (el) => {
+                el.checked = true;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        """, radio)
 
-            file_name = f"CEIS_{cnpj}.png"
-            file_path = f"/tmp/{file_name}"
+        page.wait_for_timeout(1000)
 
-            _log(f"Saving final screenshot to {file_path}")
-            page.screenshot(path=file_path, full_page=True)
+        # INPUT
+        frame, input_el = _find_input(page)
+        if not input_el:
+            raise Exception("Input não encontrado")
 
-            context.close()
-            browser.close()
+        input_el.fill(cnpj)
+
+        # BUTTON
+        frame, btn = _find_button(page)
+        if not btn:
+            raise Exception("Botão não encontrado")
+
+        btn.click()
+
+        page.wait_for_timeout(5000)
+
+        content = page.content()
+
+        if "Nenhum registro encontrado" in content:
+            has_restrictions = False
+        else:
+            has_restrictions = True
+
+        file_name = f"CEIS_{cnpj}.png"
+        file_path = f"/tmp/{file_name}"
+
+        page.screenshot(path=file_path, full_page=True)
+
+        browser.close()
 
         return {
             "status": "success",
             "file": file_name,
-            "debug": {
-                "page_title": debug_info.get("page_title"),
-                "page_url": debug_info.get("page_url"),
-                "iframes": debug_info.get("iframes"),
-                "inputs_found": debug_info.get("inputs_main_frame"),
-            },
+            "has_restrictions": has_restrictions,
+            "data": [
+                ["CEIS", "-", "-", "CGU"]
+            ]
         }
 
+
+def run_with_retry(cnpj: str, retries=2):
+
+    for attempt in range(retries):
+        try:
+            _log(f"Tentativa {attempt+1}")
+            return run_scraper(cnpj)
+        except Exception as e:
+            _log(f"Erro: {e}")
+            time.sleep(2)
+
+    return {
+        "status": "error",
+        "message": "Falha após múltiplas tentativas"
+    }
+
+
+@app.post("/collect")
+def collect(data: RequestData):
+
+    cnpj = data.cnpj
+
+    try:
+        result = run_with_retry(cnpj)
+
+        return result
+
     except Exception as e:
-        _log(f"Unhandled exception: {e}")
+        _log(f"Erro final: {e}")
         return {
             "status": "error",
-            "message": str(e),
-            "debug": debug_info,
+            "message": str(e)
         }
