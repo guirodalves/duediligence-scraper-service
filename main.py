@@ -144,9 +144,38 @@ def collect(data: RequestData):
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--window-size=1920,1080",
+                ],
             )
-            page = browser.new_page()
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1920, "height": 1080},
+                locale="pt-BR",
+                extra_http_headers={
+                    "Accept": (
+                        "text/html,application/xhtml+xml,application/xml;"
+                        "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+                    ),
+                    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Referer": "https://certidoes.cgu.gov.br/",
+                },
+            )
+            page = context.new_page()
+
+            # Hide webdriver flag so CloudFront bot-detection scripts see a
+            # regular browser rather than an automated one.
+            page.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            )
 
             # ----------------------------------------------------------------
             # 1. Navigate and wait for the page to fully load
@@ -188,6 +217,7 @@ def collect(data: RequestData):
                 # Capture a final screenshot before giving up
                 debug_info["screenshot_no_radio"] = _screenshot_b64(page, "no_radio_found")
                 debug_info["page_content_snippet"] = page.content()[:3000]
+                context.close()
                 browser.close()
                 return {
                     "status": "error",
@@ -209,6 +239,7 @@ def collect(data: RequestData):
 
             if text_el is None:
                 debug_info["screenshot_no_input"] = _screenshot_b64(page, "no_text_input")
+                context.close()
                 browser.close()
                 return {
                     "status": "error",
@@ -228,6 +259,7 @@ def collect(data: RequestData):
 
             if btn_el is None:
                 debug_info["screenshot_no_button"] = _screenshot_b64(page, "no_button")
+                context.close()
                 browser.close()
                 return {
                     "status": "error",
@@ -250,6 +282,7 @@ def collect(data: RequestData):
             _log(f"Saving final screenshot to {file_path}")
             page.screenshot(path=file_path, full_page=True)
 
+            context.close()
             browser.close()
 
         return {
