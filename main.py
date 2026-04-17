@@ -24,7 +24,7 @@ def collect(data: dict):
         page.goto("https://certidoes.cgu.gov.br/")
         page.wait_for_timeout(3000)
 
-        # Ente Privado
+        # clicar Ente Privado
         page.locator("text=Ente Privado").first.click()
         page.wait_for_timeout(1000)
 
