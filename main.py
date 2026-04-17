@@ -225,11 +225,25 @@ def collect(data: RequestData):
                     "debug": debug_info,
                 }
 
-            _log("Clicking radio button (Ente Privado)…")
-            radio_el.click()
+            _log("Clicking radio button (Ente Privado) via JavaScript to bypass label overlay…")
+            try:
+                # Use JS to set checked + dispatch change event, bypassing the
+                # custom-control-label overlay that intercepts pointer events.
+                radio_frame.evaluate("""
+                    (el) => {
+                        el.checked = true;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new Event('input',  { bubbles: true }));
+                    }
+                """, radio_el)
+                _log("Radio button checked via JS evaluate")
+            except Exception as js_exc:
+                _log(f"JS evaluate failed ({js_exc}), falling back to force click")
+                radio_el.click(force=True)
             page.wait_for_timeout(1000)
 
             debug_info["screenshot_after_radio"] = _screenshot_b64(page, "after_radio_click")
+
 
             # ----------------------------------------------------------------
             # 3. Fill in the CNPJ
