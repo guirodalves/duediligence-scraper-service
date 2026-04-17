@@ -284,10 +284,31 @@ def run_scraper(cnpj: str) -> dict:
             # ----------------------------------------------------------------
             # Step 4 — Parse result
             # ----------------------------------------------------------------
-            content = page.content()
-            has_restrictions = "Nenhum registro encontrado" not in content
-
+         
+            rows = []
+            try:
+                table_rows = page.query_selector_all("table tbody tr")
+            
+                for row in table_rows:
+                    cols = row.query_selector_all("td")
+                    values = [c.inner_text().strip() for c in cols]
+            
+                    if values:
+                        rows.append(values)
+            
+            except Exception as e:
+                _log(f"Erro ao extrair tabela: {e}")
+            
+            # fallback se não encontrar nada
+            if not rows:
+                rows = [["Nenhuma restrição encontrada", "-", "-", "-"]]
+            
+            has_restrictions = not ("Nenhuma restrição encontrada" in rows[0][0])
+            
             file_name = f"CEIS_{cnpj}.png"
+            file_path = f"/tmp/{file_name}"
+            
+            page.screenshot(path=file_path, full_page=True)
             file_path = f"/tmp/{file_name}"
             page.screenshot(path=file_path, full_page=True)
             _log(f"Screenshot salvo em {file_path}")
@@ -296,7 +317,7 @@ def run_scraper(cnpj: str) -> dict:
                 "status": "success",
                 "file": file_name,
                 "has_restrictions": has_restrictions,
-                "data": [["CEIS", "-", "-", "CGU"]],
+                 "data": rows,    
             }
 
         except Exception as exc:
