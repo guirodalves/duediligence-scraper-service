@@ -6,6 +6,8 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
+RUN playwright install
+
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
