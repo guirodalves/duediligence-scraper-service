@@ -4,6 +4,10 @@ WORKDIR /app
 
 COPY . .
 
+# INSTALA TESSERACT 
+RUN apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-por
+
+# instala libs python
 RUN pip install -r requirements.txt
 
 COPY entrypoint.sh /app/entrypoint.sh
