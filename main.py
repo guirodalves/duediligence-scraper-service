@@ -285,48 +285,48 @@ def run_scraper(cnpj: str) -> dict:
         # Step 4 — Parse result (CORRIGIDO)
         # ----------------------------------------------------------------
         
-        rows = []
-        try:
-            tables = page.query_selector_all("table")
-        
-            for table in tables:
-                text = table.inner_text()
-        
-                if "Órgão" in text or "Sanção" in text:
-        
-                    table_rows = table.query_selector_all("tbody tr")
-        
-                    for row in table_rows:
-                        cols = row.query_selector_all("td")
-                        values = [c.inner_text().strip() for c in cols]
-        
-                        if len(values) >= 3:
-                            rows.append(values)
-        
-                    break
-        
-        except Exception as e:
-            _log(f"Erro ao extrair tabela: {e}")
-        
-        # fallback
-        if not rows:
-            rows = [["Nenhuma restrição encontrada", "-", "-", "-"]]
-        
-        has_restrictions = not ("Nenhuma restrição encontrada" in rows[0][0])
-        
-        file_name = f"CEIS_{cnpj}.png"
-        file_path = f"/tmp/{file_name}"
-        
-        page.screenshot(path=file_path, full_page=True)
-        
-        _log(f"Screenshot salvo em {file_path}")
-        
-        return {
-            "status": "success",
-            "file": file_name,
-            "has_restrictions": has_restrictions,
-            "data": rows,
-        }
+            rows = []
+            try:
+                tables = page.query_selector_all("table")
+            
+                for table in tables:
+                    text = table.inner_text()
+            
+                    if "Órgão" in text or "Sanção" in text:
+            
+                        table_rows = table.query_selector_all("tbody tr")
+            
+                        for row in table_rows:
+                            cols = row.query_selector_all("td")
+                            values = [c.inner_text().strip() for c in cols]
+            
+                            if len(values) >= 3:
+                                rows.append(values)
+            
+                        break
+            
+            except Exception as e:
+                _log(f"Erro ao extrair tabela: {e}")
+            
+            # fallback
+            if not rows:
+                rows = [["Nenhuma restrição encontrada", "-", "-", "-"]]
+            
+            has_restrictions = not ("Nenhuma restrição encontrada" in rows[0][0])
+            
+            file_name = f"CEIS_{cnpj}.png"
+            file_path = f"/tmp/{file_name}"
+            
+            page.screenshot(path=file_path, full_page=True)
+            
+            _log(f"Screenshot salvo em {file_path}")
+            
+            return {
+                "status": "success",
+                "file": file_name,
+                "has_restrictions": has_restrictions,
+                "data": rows,
+            }
 
         except Exception as exc:
             _log(f"Erro no scraper: {exc}")
