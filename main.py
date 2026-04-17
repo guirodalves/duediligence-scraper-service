@@ -313,7 +313,7 @@ def run_scraper(cnpj: str) -> dict:
             
             has_restrictions = not ("Nenhuma restrição encontrada" in rows[0][0])
             
-            file_name = f"CEIS_{cnpj}.png"
+            file_name = f"CEIS_{cnpj}.pdf"
             file_path = f"/tmp/{file_name}"
             
             page.screenshot(path=file_path, full_page=True)
