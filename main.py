@@ -280,6 +280,44 @@ def run_scraper(cnpj: str) -> dict:
 
             debug["screenshot_result"] = _screenshot_b64(page)
 
+            content = page.content()
+
+            import re
+
+            # -------------------------
+            # EXTRAÇÃO DE METADADOS
+            # -------------------------
+            
+            razao_social = ""
+            data_emissao = ""
+            validade = ""
+            codigo = ""
+            
+            # Razão social
+            match_nome = re.search(r"Consultado:\s*(.*)", content)
+            if match_nome:
+                razao_social = match_nome.group(1).strip()
+            
+            # Data emissão (hora oficial)
+            match_emissao = re.search(r"emitida às (.*?) do dia (.*?),", content)
+            if match_emissao:
+                data_emissao = f"{match_emissao.group(2)} {match_emissao.group(1)}"
+            
+            # Validade
+            match_validade = re.search(r"validade até o dia (.*?)\.", content)
+            if match_validade:
+                validade = match_validade.group(1)
+            
+            # Código de controle
+            match_codigo = re.search(r"Código de controle da certidão:\s*(\S+)", content)
+            if match_codigo:
+                codigo = match_codigo.group(1)
+            
+            _log(f"Razão social: {razao_social}")
+            _log(f"Data emissão: {data_emissao}")
+            _log(f"Validade: {validade}")
+            _log(f"Código: {codigo}")
+
         # ----------------------------------------------------------------
         # Step 4 — Parse result (CORRIGIDO)
         # ----------------------------------------------------------------
@@ -325,6 +363,10 @@ def run_scraper(cnpj: str) -> dict:
                 "file": file_name,
                 "has_restrictions": has_restrictions,
                 "data": rows,
+                "razao_social": razao_social,
+                "data_emissao": data_emissao,
+                "validade": validade,
+                "codigo_controle": codigo
             }
 
         except Exception as exc:
