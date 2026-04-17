@@ -292,6 +292,13 @@ def run_scraper(cnpj: str) -> dict:
 
             debug["screenshot_result"] = _screenshot_b64(page)
 
+            # DEFINIR ARQUIVO ANTES DE USAR
+            file_name = f"CEIS_{cnpj}.png"
+            file_path = f"/tmp/{file_name}"
+            
+            page.screenshot(path=file_path, full_page=True)
+            _log(f"Screenshot salvo em {file_path}")
+
             page.screenshot(path=file_path, full_page=True)
 
             # -------------------------
@@ -363,11 +370,6 @@ def run_scraper(cnpj: str) -> dict:
                 rows = [["Nenhuma restrição encontrada", "-", "-", "-"]]
             
             has_restrictions = not ("Nenhuma restrição encontrada" in rows[0][0])
-            
-            file_name = f"CEIS_{cnpj}.png"
-            file_path = f"/tmp/{file_name}"
-            
-            page.screenshot(path=file_path, full_page=True)
             
             _log(f"Screenshot salvo em {file_path}")
             
