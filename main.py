@@ -6,7 +6,7 @@ from datetime import datetime
 import time
 
 app = FastAPI()
-
+ta
 
 class RequestData(BaseModel):
     cnpj: str
@@ -286,8 +286,35 @@ def run_scraper(cnpj: str) -> dict:
             # ----------------------------------------------------------------
          
             rows = []
-            try:
-                table_rows = page.query_selector_all("table tbody tr")
+
+                try:
+                    tables = page.query_selector_all("table")
+                
+                    for table in tables:
+                        text = table.inner_text()
+                
+                        # 🔥 FILTRO: tabela que contém "Órgão" ou "Sanção"
+                        if "Órgão" in text or "Sanção" in text:
+                
+                            table_rows = table.query_selector_all("tbody tr")
+                
+                            for row in table_rows:
+                                cols = row.query_selector_all("td")
+                                values = [c.inner_text().strip() for c in cols]
+                
+                                if len(values) >= 3:
+                                    rows.append(values)
+                
+                            break
+                
+                except Exception as e:
+                    _log(f"Erro ao extrair tabela: {e}")
+                
+                # fallback
+                if not rows:
+                    rows = [["NADA CONSTA", "-", "-", "-"]]
+                
+                has_restrictions = not ("NADA CONSTA" in rows[0][0])
             
                 for row in table_rows:
                     cols = row.query_selector_all("td")
