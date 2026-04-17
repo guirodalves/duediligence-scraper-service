@@ -28,7 +28,16 @@ def collect(data: RequestData):
 
             page.goto("https://certidoes.cgu.gov.br/", timeout=60000)
 
-            page.click("text=Ente Privado")
+            await page.wait_for_load_state("networkidle")
+
+            # espera qualquer radio button aparecer
+            await page.wait_for_selector("input[type=radio]")
+            
+            # clica no primeiro radio (Ente Privado)
+            radios = await page.query_selector_all("input[type=radio]")
+            await radios[0].click()
+
+            # insere o CNPJ
             page.fill("input[type='text']", cnpj)
             page.click("button:has-text('Consultar')")
 
