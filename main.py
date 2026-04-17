@@ -288,30 +288,35 @@ def run_scraper(cnpj: str) -> dict:
             # EXTRAÇÃO DE METADADOS
             # -------------------------
             
+            def get_text_safe(page, selector):
+                try:
+                    el = page.query_selector(selector)
+                    if el:
+                        return el.inner_text().strip()
+                except:
+                    pass
+                return ""
+            
             razao_social = ""
             data_emissao = ""
             validade = ""
             codigo = ""
             
-            # Razão social
-            match_nome = re.search(r"Consultado:\s*(.*)", content)
-            if match_nome:
-                razao_social = match_nome.group(1).strip()
+            # tenta capturar tudo visível
+            texts = page.locator("text=*").all_inner_texts()
             
-            # Data emissão (hora oficial)
-            match_emissao = re.search(r"emitida às (.*?) do dia (.*?),", content)
-            if match_emissao:
-                data_emissao = f"{match_emissao.group(2)} {match_emissao.group(1)}"
+            for t in texts:
+                if "Consultado:" in t:
+                    razao_social = t.replace("Consultado:", "").strip()
             
-            # Validade
-            match_validade = re.search(r"validade até o dia (.*?)\.", content)
-            if match_validade:
-                validade = match_validade.group(1)
+                if "Código de controle" in t:
+                    codigo = t.split(":")[-1].strip()
             
-            # Código de controle
-            match_codigo = re.search(r"Código de controle da certidão:\s*(\S+)", content)
-            if match_codigo:
-                codigo = match_codigo.group(1)
+                if "emitida às" in t:
+                    data_emissao = t.strip()
+            
+                if "validade até" in t:
+                    validade = t.strip()
             
             _log(f"Razão social: {razao_social}")
             _log(f"Data emissão: {data_emissao}")
